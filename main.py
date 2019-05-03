@@ -5,6 +5,7 @@ import sqlalchemy as db
 from sqlalchemy_utils import database_exists, create_database
 import config
 import time
+from datetime import date
 
 
 def get_database_host_user_password(aws_or_gcp):
@@ -68,30 +69,38 @@ if __name__ == '__main__':
     scraper = Scraper()
 
     # establish the database connection with the database zipcode_geocoded_data
-    engine = create_database_engine(
+    zip_engine = create_database_engine(
         gcp_user, gcp_password, gcp_host, 'zipcode_geocoded_data', False)
-    conn = engine.connect()
-    cursor = conn.cursor()
+    zip_conn = zip_engine.connect()
     detail = False
 
+    # establish the database connection with the database dev_test
+    engine = create_database_engine(
+        gcp_user, gcp_password, gcp_host, 'dev_test', False)
+    conn = engine.connect()
+
     # create apartments table
+    cursor = conn.cursor()
     cursor.execute(
         'Create TABLE IF NOT EXISTS apartments (apartment_id VARCHAR(10), lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
 
     # load the data for each zipcode of interest
-    zipcodes = get_all_zipcodes(conn)
+    zipcodes = get_all_zipcodes(zip_conn)
     empty_zipcodes = set()
     nonempty_zipcodes = set()
     for zipcode in zipcodes.values:
         print('Starting zipcode {} ...'.format(zipcode))
-        data = scraper.get_apartments(zipcode[0])
-        if data:
-            scraper.append_search_results(data, zipcode[0], True)
-            nonempty_zipcodes.add(zipcode[0])
-        else:
-            empty_zipcodes.add(zipcode[0])
-            print('No venues found in zipcode {} ...'.format(zipcode))
-
+        id_lat_lon_array = scraper.get_apartments_id(zipcode[0])
+        if id_lat_lon_array:
+            for id_lat_lon in id_lat_lon_array:
+                (id, lat, lon) = id_lat_lon
+                id_rows = cursor.execute(
+                    'SELECT apartment_id FROM apartments WHERE apartment_id = {};'.format(id))
+                if len(id_rows) == 0:
+                    [description, feature_json] = scraper.scrape_apartment_info(
+                        id, lat, lon)
+                cursor.execute('INSERT INTO apartments VALUES ({0},{1},{2},{3},{4},{5})'.format(
+                    id, float(lat), float(lon), description, feature_json, date.today().strftime('%Y-%m-%d'))
     print('Finished retrieving data!')
     print('Transferring the data to the database...')
     # scraper.venues.to_sql('classpass_venues', create_database_engine(gcp_user, gcp_password, gcp_host, 'dev_test', True),
