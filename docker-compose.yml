@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  data-worker:
+    build:
+      context: '.'
+      dockerfile: 'Dockerfile'
+    volumes:
+      - C:\Users\Chuan\.aws:/root/.aws
+    image: 360103714984.dkr.ecr.us-east-1.amazonaws.com/general-scrapers:classpass-scraper-0.0.1
