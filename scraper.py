@@ -15,21 +15,20 @@ class Scraper():
     geography_url = 'https://www.apartments.com/services/geography/search/'
     pins_url = 'https://www.apartments.com/services/search/'
     request_header = {
-        'method': 'POST',
-        'Accept': 'application/json, text/javascript, */*',
-        'accept-encoding': 'gzip, deflate, br',
-        'accept-language': 'en-US,en',
-        'content-type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'Host': 'www.apartments.com',
-        'Origin': 'https://www.apartments.com',
-        'Referer': 'https://www.apartments.com/',
-        'platform': 'web',
-        'referer': 'https://classpass.com/search/ladera-heights-ca-usa/fitness-classes/4VvdcJFiBgT',
-        'X_CSRF_TOKEN': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NTY4Nzk0NDYsImV4cCI6MTU1Njk2NTg0NiwiaWF0IjoxNTU2ODc5NDQ2LCJpc3MiOiJodHRwczovL3d3dy5hcGFydG1lbnRzLmNvbSIsImF1ZCI6Imh0dHBzOi8vd3d3LmFwYXJ0bWVudHMuY29tIn0.WWLSfxr-vGLFQ6RKCWZxtEEZZ8vHG4-1YEszrmt1Tfc',
-        'X-Requested-With': 'XMLHttpRequest',
-        'User-agent': 'Mozilla/5.0 (Windows NT 10.0 Win64 x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134'
+        'Accept': "application/json, text/javascript, */*; q=0.01",
+        'Accept-Encoding': "gzip, deflate, br",
+        'Accept-Language': "en-US, en; q=0.8, zh-Hans-CN; q=0.5, zh-Hans; q=0.3",
+        'Cache-Control': "no-cache",
+        'Content-Type': "application/json",
+        'Host': "www.apartments.com",
+        'Origin': "https://www.apartments.com",
+        'Referer': "https://www.apartments.com/",
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134",
+        'X_CSRF_TOKEN': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NTY4Nzk0NDYsImV4cCI6MTU1Njk2NTg0NiwiaWF0IjoxNTU2ODc5NDQ2LCJpc3MiOiJodHRwczovL3d3dy5hcGFydG1lbnRzLmNvbSIsImF1ZCI6Imh0dHBzOi8vd3d3LmFwYXJ0bWVudHMuY29tIn0.WWLSfxr-vGLFQ6RKCWZxtEEZZ8vHG4-1YEszrmt1Tfc",
+        'X-Requested-With': "XMLHttpRequest",
+        'Postman-Token': "6f9268f4-f473-40d8-b53e-70e363dd7b51"
     }
+
     rows_retrieved = 0
 
     def __init__(self, category_idx=0):
@@ -64,9 +63,10 @@ class Scraper():
             lon = id_string_array[4]
             if id_string_array[2] != 'null':
                 for id_string_sub in json.load(id_string_array[2]):
-                    id_lat_lon_array.append(tuple((id_string_sub['ListingId'], lat, lon)))
+                    id_lat_lon_array.append(
+                        tuple((id_string_sub['ListingId'], lat, lon)))
             else:
-                id_lat_lon_array.append(id_string_array[0], lat, lon)
+                id_lat_lon_array.append(tuple((id_string_array[0], lat, lon)))
         return id_lat_lon_array
 
     def get_apartment_ids(self, zipcode):
@@ -78,16 +78,22 @@ class Scraper():
         # repeat the request for max_iter times just to avoid package loss or network glitches
         for _ in range(self.max_iter):
             Scraper.random_sleep()
-            resp = self.session.post(
-                Scraper.search_url, headers=self.request_header, data=json.dumps('{"t": {}}'.format(zipcode)), verify=False)
+            payload = {}
+            payload['t'] = zipcode
+            print('Before sending')
+            resp = requests.request(
+                "POST", url=self.geography_url, data=json.dumps(payload), headers=self.request_header)
+            print('After sending')
             if resp.status_code == 200:
                 geography = json.loads(resp.text)
                 if len(geography) == 0:
                     return None
+                break
             print('ERROR with status code {}'.format(resp))
             print('HTTP response body {}'.format(resp.text))
-        raise Exception(
-            'Request failed {} times. It is probably blocked.'.format(self.max_iter))
+        if _ == self.max_iter - 1:
+            raise Exception(
+                'Request failed {} times. It is probably blocked.'.format(self.max_iter))
 
         geography_payload = {}
         geography_payload['Geography'] = geography[0]
@@ -105,36 +111,5 @@ class Scraper():
                 ids_raw = result['PinsState']['cl']
                 return self.parse_ids(ids_raw)
 
-    def append_search_results(self, data, zipcode, attach):
-        """Given the data, it append each entry of the data to the existing dataframe in the scraper instance.
-
-        Arguments:
-            data {an array of json objects} -- each entry of the array is a json object containing the venue information
-        """
-        datetime = date.today().strftime('%Y-%m-%d')
-        if not attach:
-            venues = pd.DataFrame(columns=[
-                'id', 'datetime', 'venue_name', 'zipcode', 'location_name', 'activities', 'display_rating_total', 'display_rating_average', 'description'])
-        for entry in data:
-            id = entry['venue_id']
-            venue_name = entry['venue_name']
-            location_name = entry['location_name'] if 'location_name' in entry else None
-            activities = entry['activities'] if 'activities' in entry else None
-            description = entry['description'] if 'description' in entry else None
-            display_rating_total = entry['display_rating_total'] if 'display_rating_total' in entry else None
-            display_rating_average = entry['display_rating_average'] if 'display_rating_average' in entry else None
-            if attach:
-                self.venues = self.venues.append({'id': id, 'datetime': datetime, 'venue_name': venue_name, 'zipcode': zipcode, 'location_name': location_name,
-                                                  'activities': activities, 'display_rating_total': display_rating_total, 'display_rating_average': display_rating_average,
-                                                  'description': description}, ignore_index=True)
-            else:
-                venues = venues.append(
-                    {'id': id, 'datetime': datetime, 'venue_name': venue_name, 'zipcode': zipcode, 'location_name': location_name,
-                     'activities': activities, 'display_rating_total': display_rating_total, 'display_rating_average': display_rating_average,
-                     'description': description}, ignore_index=True)
-        return
-
-    def save_venues_to_pickle(self, path='scraped_venues.pkl'):
-        """Save the current venues to a pickle file locally. The default path is 'scraped_venues.pkl'
-        """
-        pd.to_pickle(self.venues, path)
+    def scrape_apartment_info(self, id, lat, lon):
+        print("To be implemented...")

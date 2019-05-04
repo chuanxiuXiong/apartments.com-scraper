@@ -2,6 +2,7 @@ from scraper import Scraper
 import pandas as pd
 from Databases.s3_transfer import s3_transfer
 import sqlalchemy as db
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import database_exists, create_database
 import config
 import time
@@ -70,18 +71,18 @@ if __name__ == '__main__':
 
     # establish the database connection with the database zipcode_geocoded_data
     zip_engine = create_database_engine(
-        gcp_user, gcp_password, gcp_host, 'zipcode_geocoded_data', False)
+        aws_user, aws_password, aws_host, ' ', False)
     zip_conn = zip_engine.connect()
     detail = False
 
     # establish the database connection with the database dev_test
     engine = create_database_engine(
-        gcp_user, gcp_password, gcp_host, 'dev_test', False)
+        gcp_user, gcp_password, gcp_host, 'dev_test', True)
+    Session = sessionmaker(bind=engine)
     conn = engine.connect()
 
     # create apartments table
-    cursor = conn.cursor()
-    cursor.execute(
+    conn.execute(
         'Create TABLE IF NOT EXISTS apartments (apartment_id VARCHAR(10), lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
 
     # load the data for each zipcode of interest
@@ -90,22 +91,31 @@ if __name__ == '__main__':
     nonempty_zipcodes = set()
     for zipcode in zipcodes.values:
         print('Starting zipcode {} ...'.format(zipcode))
-        id_lat_lon_array = scraper.get_apartments_id(zipcode[0])
+        id_lat_lon_array = scraper.get_apartment_ids(zipcode[0])
+        print(id_lat_lon_array)
         if id_lat_lon_array:
             for id_lat_lon in id_lat_lon_array:
                 (id, lat, lon) = id_lat_lon
-                id_rows = cursor.execute(
-                    'SELECT apartment_id FROM apartments WHERE apartment_id = {};'.format(id))
-                if len(id_rows) == 0:
+
+                # check to see if the id already exists in the database
+                print('Selecting existing id...')
+                id_rows = conn.execute(
+                    'SELECT apartment_id FROM apartments WHERE apartment_id = "{}";'.format(id))
+                empty = True
+                for row in id_rows:
+                    empty = False
+                    break
+
+                if empty:
                     [description, feature_json] = scraper.scrape_apartment_info(
                         id, lat, lon)
-                cursor.execute('INSERT INTO apartments VALUES ({0},{1},{2},{3},{4},{5})'.format(
-                    id, float(lat), float(lon), description, feature_json, date.today().strftime('%Y-%m-%d'))
+                    conn.execute('INSERT INTO apartments VALUES ({0},{1},{2},{3},{4},{5})'.format(
+                        id, float(lat), float(lon), description, feature_json, date.today().strftime('%Y-%m-%d')))
+                    print('Finished inserting...')
+
+                print(id, lat, lon)
     print('Finished retrieving data!')
     print('Transferring the data to the database...')
-    # scraper.venues.to_sql('classpass_venues', create_database_engine(gcp_user, gcp_password, gcp_host, 'dev_test', True),
-    #                       if_exists='append', index=False)
-    print('Total rows retrieved: {}'.format(len(scraper.venues)))
     print('List of nonempty zipcodes:')
     print(list(nonempty_zipcodes))
     print('Time used: {}'.format(time.time() - start_time))
