@@ -112,13 +112,15 @@ class Scraper():
         for _ in range(self.max_iter):
             Scraper.random_sleep()
             payload = {}
-            payload['t'] = zipcode
+            payload['t'] = '01011'
             print('Before sending')
             resp = requests.request(
                 "POST", url=self.geography_url, data=json.dumps(payload), headers=self.request_header)
             print('After sending')
             if resp.status_code == 200:
                 geography = json.loads(resp.text)
+                if not geography:
+                    return None
                 if len(geography) == 0:
                     return None
                 break
@@ -133,6 +135,9 @@ class Scraper():
         paging_payload = {}
         paging_payload['CurrentPageListingKey'] = None
 
+        print('Geography payload {}'.format(geography_payload))
+        print('Paging payload {}'.format(paging_payload))
+
         end = False
         page_idx = 1
         previous_url = ''  # records the first id of the last page
@@ -143,6 +148,9 @@ class Scraper():
             # repeat the request for max_iter times just to avoid package loss or network glitches
             for _ in range(self.max_iter):
                 Scraper.random_sleep()
+                print('Requesting for URLs...')
+                print(self.request_header)
+                print(json.dumps(geography_payload))
                 resp = self.session.post(
                     Scraper.search_url, headers=self.request_header, data=json.dumps(geography_payload), verify=False)
                 if resp.status_code == 200:
@@ -151,18 +159,33 @@ class Scraper():
                         return None
                     html_raw = result['PlacardState']['HTML']
                     soup = BeautifulSoup(html_raw, 'html.parser')
-                    cards = soup.find_all('article')
+                    cards = soup.find_all(
+                        'a', {'class': 'placardTitle js-placardTitle'})
                     # the apartments.com allows request with `page` exceeding the # of pages and returns by the last page
                     # Therefore, to check if it is the last page, we check if the current page's first url is the same as
                     # one in the last page
-                    if cards[0]['data-url'][2:-2] == previous_url:
+                    if 'href' not in cards[0]:
+                        print(cards[0])
+                        print(
+                            'href not in cards[0]... breaking the loop...')
+                        return None
+                    if cards[0]['href'][cards[0]['href'].find('http'):-2] == previous_url:
+                        print('End of the region... Braking...')
                         end = True
                         break
-                    previous_url = cards[0]['data-url'][2:-2]
+                    previous_url = cards[0]['href'][cards[0]
+                                                    ['href'].find('http'):-2]
                     for card in cards:
-                        url = card['data-url'][2:-2]
+                        if 'href' not in card:
+                            print(card)
+                            print(
+                                'href not in card... breaking the loop...')
+                            return None
+                        url = card['href'][card['href'].find('http'):-2]
+                        print("Scraping url {}".format(url))
                         info = self.scrape_apartment_info(url)
                         if not info:
                             continue
                         conn.execute('INSERT INTO apartments VALUES ({1},{2},{3},{4},{5})'.format(float(
                             info['lat']), float(info['lon']), info['description'], json.dumps(info['feature_json']), date.today().strftime('%Y-%m-%d')))
+            page_idx += 1

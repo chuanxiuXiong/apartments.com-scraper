@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     # establish the database connection with the database zipcode_geocoded_data
     zip_engine = create_database_engine(
-        aws_user, aws_password, aws_host, ' ', False)
+        aws_user, aws_password, aws_host, 'zipcode_geocoded_data', False)
     zip_conn = zip_engine.connect()
     detail = False
 
@@ -81,6 +81,7 @@ if __name__ == '__main__':
     Session = sessionmaker(bind=engine)
     conn = engine.connect()
 
+    print('Creating table in the gcp database...')
     # create apartments table
     conn.execute(
         'Create TABLE IF NOT EXISTS apartments (lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
@@ -91,7 +92,7 @@ if __name__ == '__main__':
     nonempty_zipcodes = set()
     for zipcode in zipcodes.values:
         print('Starting zipcode {} ...'.format(zipcode))
-
+        scraper.store_apartment_info(zipcode[0], conn)
         # ***************************************************************
         # The following code is only for getting the apartment locations.
         # This has much better performance.
