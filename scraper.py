@@ -74,7 +74,11 @@ class Scraper():
         headers = {'Cache-Control': 'no-cache', 'Accept': '*/*',
                    'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134"}
         Scraper.random_sleep()
+        print("Parsing Info...")
+        print("URL {}".format(url))
+        print("Headers {}".format(headers))
         response = requests.request("GET", url, headers=headers)
+        print(response)
         if response.status_code != 200:
             return None
         # parse the info
@@ -112,7 +116,7 @@ class Scraper():
         for _ in range(self.max_iter):
             Scraper.random_sleep()
             payload = {}
-            payload['t'] = '01011'
+            payload['t'] = zipcode
             print('Before sending')
             resp = requests.request(
                 "POST", url=self.geography_url, data=json.dumps(payload), headers=self.request_header)
@@ -188,4 +192,5 @@ class Scraper():
                             continue
                         conn.execute('INSERT INTO apartments VALUES ({1},{2},{3},{4},{5})'.format(float(
                             info['lat']), float(info['lon']), info['description'], json.dumps(info['feature_json']), date.today().strftime('%Y-%m-%d')))
+                    break
             page_idx += 1
