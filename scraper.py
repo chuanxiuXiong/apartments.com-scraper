@@ -4,6 +4,7 @@ import time
 import pandas as pd
 from datetime import date
 import json
+from bs4 import BeautifulSoup
 
 
 class Scraper():
@@ -13,7 +14,7 @@ class Scraper():
     # If the max number of attempt is reached, the requests might be blocked.
     max_iter = 10
     geography_url = 'https://www.apartments.com/services/geography/search/'
-    pins_url = 'https://www.apartments.com/services/search/'
+    search_url = 'https://www.apartments.com/services/search/'
     request_header = {
         'Accept': "application/json, text/javascript, */*; q=0.01",
         'Accept-Encoding': "gzip, deflate, br",
@@ -69,8 +70,40 @@ class Scraper():
                 id_lat_lon_array.append(tuple((id_string_array[0], lat, lon)))
         return id_lat_lon_array
 
-    def get_apartment_ids(self, zipcode):
-        """It returns the apartment ids that are within the area.
+    def scrape_apartment_info(self, url):
+        headers = {'Cache-Control': 'no-cache', 'Accept': '*/*',
+                   'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134"}
+        Scraper.random_sleep()
+        response = requests.request("GET", url, headers=headers)
+        if response.status_code != 200:
+            return None
+        # parse the info
+        soup = BeautifulSoup(response.text, 'html')
+        info = {}
+        info['lat'] = soup.find(
+            'meta', {'property': 'place:location:latitude'})['content']
+        info['lon'] = soup.find(
+            'meta', {'property': 'place:location:longitude'})['content']
+        info['neighborhood'] = soup.find('a', {'class': 'neighborhood'}).text
+        info['price'] = soup.find('td', {'class': 'rent'}).text.replace(
+            '\r', '').replace('\n', '').split()[0]
+        info['description'] = soup.find(
+            'section', {'class': 'descriptionSection'}).p.text
+        features = soup.find_all('div', class_='specList')
+        feature_list = []
+        for feature in features:
+            # if there is only one feature, there are no <li> on the website
+            # so we do something special here
+            if len(feature.find_all('span', recursive=False)) == 1:
+                feature_list.append(feature.find_all('span')[-1])
+            else:
+                for li in feature.find_all('li'):
+                    feature_list.append(li.text.replace('\u2022', ''))
+        info['feature_json'] = feature_list
+        return feature
+
+    def store_apartment_info(self, zipcode, conn):
+        """It returns the apartment infos that are within the area.
         """
         # sleep to avoid detection
         Scraper.random_sleep()
@@ -97,19 +130,39 @@ class Scraper():
 
         geography_payload = {}
         geography_payload['Geography'] = geography[0]
+        paging_payload = {}
+        paging_payload['CurrentPageListingKey'] = None
 
-        # starting to search for the apartment ids
-        # repeat the request for max_iter times just to avoid package loss or network glitches
-        for _ in range(self.max_iter):
-            Scraper.random_sleep()
-            resp = self.session.post(
-                Scraper.pins_url, headers=self.request_header, data=json.dumps(geography_payload), verify=False)
-            if resp.status_code == 200:
-                result = json.loads(resp.text)
-                if 'PinsState' not in result:
-                    return None
-                ids_raw = result['PinsState']['cl']
-                return self.parse_ids(ids_raw)
-
-    def scrape_apartment_info(self, id, lat, lon):
-        print("To be implemented...")
+        end = False
+        page_idx = 1
+        previous_url = ''  # records the first id of the last page
+        while not end:
+            paging_payload['Page'] = page_idx
+            geography_payload['Paging'] = paging_payload
+            # starting to search for the apartment links
+            # repeat the request for max_iter times just to avoid package loss or network glitches
+            for _ in range(self.max_iter):
+                Scraper.random_sleep()
+                resp = self.session.post(
+                    Scraper.search_url, headers=self.request_header, data=json.dumps(geography_payload), verify=False)
+                if resp.status_code == 200:
+                    result = json.loads(resp.text)
+                    if 'PlacardState' not in result:
+                        return None
+                    html_raw = result['PlacardState']['HTML']
+                    soup = BeautifulSoup(html_raw, 'html.parser')
+                    cards = soup.find_all('article')
+                    # the apartments.com allows request with `page` exceeding the # of pages and returns by the last page
+                    # Therefore, to check if it is the last page, we check if the current page's first url is the same as
+                    # one in the last page
+                    if cards[0]['data-url'][2:-2] == previous_url:
+                        end = True
+                        break
+                    previous_url = cards[0]['data-url'][2:-2]
+                    for card in cards:
+                        url = card['data-url'][2:-2]
+                        info = self.scrape_apartment_info(url)
+                        if not info:
+                            continue
+                        conn.execute('INSERT INTO apartments VALUES ({1},{2},{3},{4},{5})'.format(float(
+                            info['lat']), float(info['lon']), info['description'], json.dumps(info['feature_json']), date.today().strftime('%Y-%m-%d')))

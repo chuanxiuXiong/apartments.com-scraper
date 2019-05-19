@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     # create apartments table
     conn.execute(
-        'Create TABLE IF NOT EXISTS apartments (apartment_id VARCHAR(10), lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
+        'Create TABLE IF NOT EXISTS apartments (lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
 
     # load the data for each zipcode of interest
     zipcodes = get_all_zipcodes(zip_conn)
@@ -91,29 +91,31 @@ if __name__ == '__main__':
     nonempty_zipcodes = set()
     for zipcode in zipcodes.values:
         print('Starting zipcode {} ...'.format(zipcode))
-        id_lat_lon_array = scraper.get_apartment_ids(zipcode[0])
-        print(id_lat_lon_array)
-        if id_lat_lon_array:
-            for id_lat_lon in id_lat_lon_array:
-                (id, lat, lon) = id_lat_lon
 
-                # check to see if the id already exists in the database
-                print('Selecting existing id...')
-                id_rows = conn.execute(
-                    'SELECT apartment_id FROM apartments WHERE apartment_id = "{}";'.format(id))
-                empty = True
-                for row in id_rows:
-                    empty = False
-                    break
-
-                if empty:
-                    [description, feature_json] = scraper.scrape_apartment_info(
-                        id, lat, lon)
-                    conn.execute('INSERT INTO apartments VALUES ({0},{1},{2},{3},{4},{5})'.format(
-                        id, float(lat), float(lon), description, feature_json, date.today().strftime('%Y-%m-%d')))
-                    print('Finished inserting...')
-
-                print(id, lat, lon)
+        # ***************************************************************
+        # The following code is only for getting the apartment locations.
+        # This has much better performance.
+        # id_lat_lon_array = scraper.get_apartment_ids(zipcode[0])
+        # print(id_lat_lon_array)
+        # if id_lat_lon_array:
+        #     for id_lat_lon in id_lat_lon_array:
+        #         (id, lat, lon) = id_lat_lon
+        #         # check to see if the id already exists in the database
+        #         print('Selecting existing id...')
+        #         id_rows = conn.execute(
+        #             'SELECT apartment_id FROM apartments WHERE apartment_id = "{}";'.format(id))
+        #         empty = True
+        #         for row in id_rows:
+        #             empty = False
+        #             break
+        #         if empty:
+        #             [description, feature_json] = scraper.scrape_apartment_info(
+        #                 id, lat, lon)
+        #             conn.execute('INSERT INTO apartments VALUES ({0},{1},{2},{3},{4},{5})'.format(
+        #                 id, float(lat), float(lon), description, feature_json, date.today().strftime('%Y-%m-%d')))
+        #             print('Finished inserting...')
+        #         print(id, lat, lon)
+        # **************************************************************
     print('Finished retrieving data!')
     print('Transferring the data to the database...')
     print('List of nonempty zipcodes:')
