@@ -84,7 +84,7 @@ if __name__ == '__main__':
     print('Creating table in the gcp database...')
     # create apartments table
     conn.execute(
-        'Create TABLE IF NOT EXISTS apartments (lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
+        'Create TABLE IF NOT EXISTS apartments (id INT AUTO_INCREMENT PRIMARY KEY,lat FLOAT, lon FLOAT, description TEXT, feature_json TEXT, datetime DATE);')
 
     # load the data for each zipcode of interest
     zipcodes = get_all_zipcodes(zip_conn)
@@ -92,6 +92,7 @@ if __name__ == '__main__':
     nonempty_zipcodes = set()
     for zipcode in zipcodes.values:
         print('Starting zipcode {} ...'.format(zipcode))
+        conn = engine.connect()
         scraper.store_apartment_info(zipcode[0], conn)
         # ***************************************************************
         # The following code is only for getting the apartment locations.
