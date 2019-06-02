@@ -8,7 +8,7 @@
 
 ## Introduction
 
-This tool scrapes selected data from apartments.com platform (https://www.apartments.com/) into the mysql database. It loads the zipcode list from the database, search for fitness centers within the zipcode range and stores the data back to the database. Provided codes also supports tranferring the credentials of database connection from aws s3 bucket and dockerizing the application.
+This tool scrapes selected data from apartments.com platform (https://www.apartments.com/) into the mysql database. It loads the zipcode list from the database, search for apartments within the zipcode range and stores the data back to the database. From each page of the apartments.com, we get the link to the details of each household and we scrape more information about that household using the link. Provided codes also supports tranferring the credentials of database connection from aws s3 bucket and dockerizing the application.
 
 
 <img src="https://cdn4.iconfinder.com/data/icons/logos-and-brands/512/267_Python_logo-512.png" height="75" style="margin: 10px; float: left;">
